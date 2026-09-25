@@ -216,3 +216,12 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Артефакты обучения и метрики
+artifacts/
+mlruns/
+*.joblib
+
+# Данные, которые воспроизводятся из источника
+data/*.tmp
+data/cache/
