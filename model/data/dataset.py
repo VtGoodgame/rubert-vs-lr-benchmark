@@ -1,12 +1,14 @@
 # model/data/dataset.py
 import os
+
 import pandas as pd
 import torch
 from torch.utils.data import Dataset
+
+from model.data.labels import encode_labels
 from model.preprocessing.clean import clean_text
 from model.tokenization.tokenizer import TextTokenizer
 
-LABEL_MAP = {"ham": 0.0, "spam": 1.0}
 
 class SpamDataset(Dataset):
     def __init__(self, csv_path: str, tokenizer: TextTokenizer,
@@ -24,11 +26,7 @@ class SpamDataset(Dataset):
         df = pd.read_csv(csv_path).fillna("")
         texts = [clean_text(str(t)) for t in df["text"]]
 
-        mapped = df["target"].str.strip().str.lower().map(LABEL_MAP)
-        if mapped.isna().any():
-            bad = df.loc[mapped.isna(), "target"].unique()
-            raise ValueError(f"Неизвестные метки: {bad}")
-        labels = mapped.values.astype("float32")
+        labels = encode_labels(df, dtype="float32")
 
         if precompute:
             enc = tokenizer.batch(texts)
