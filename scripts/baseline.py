@@ -1,18 +1,25 @@
 # scripts/baseline.py
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import f1_score
-import pandas as pd
+
+from model.data.labels import encode_labels
 from model.preprocessing.clean import clean_text
 
 train = pd.read_csv("model/data/train_split.csv").fillna("")
 test = pd.read_csv("model/data/test.csv").fillna("")
 
 X_train = [clean_text(str(t)) for t in train["text"]]
-y_train = train["target"].map({"ham": 0, "spam": 1}).values
+y_train = encode_labels(train)
 
 X_test = [clean_text(str(t)) for t in test["text"]]
-y_test = test["target"].map({"ham": 0, "spam": 1}).values
+y_test = encode_labels(test)
 
 vec = TfidfVectorizer(max_features=10000, ngram_range=(1, 2))
 X_train_vec = vec.fit_transform(X_train)
