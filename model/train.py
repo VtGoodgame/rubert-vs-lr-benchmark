@@ -6,9 +6,12 @@ import torch
 from sklearn.metrics import classification_report, f1_score, precision_score, recall_score
 from torch.utils.data import DataLoader
 
+from common.logging_setup import get_logger, setup_logging
 from model.data.dataset import SpamDataset
 from model.spam_classifier import SpamClassifier
 from model.tokenization.tokenizer import TextTokenizer
+
+logger = get_logger(__name__)
 
 # === Настройки ===
 CONFIG = {
@@ -34,18 +37,21 @@ CONFIG = {
 
 
 def get_device():
-    """Выбирает устройство и печатает диагностику."""
+    """Выбирает устройство и пишет диагностику в лог."""
     if torch.cuda.is_available():
         device = torch.device("cuda")
-        print(f"✅ CUDA доступна: {torch.cuda.get_device_name(0)}")
-        print(f"   CUDA version: {torch.version.cuda}")
-        print(f"   GPU memory:   {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
-        print(f"   PyTorch:      {torch.__version__}")
+        logger.info("CUDA доступна: %s", torch.cuda.get_device_name(0))
+        logger.info("   CUDA version: %s", torch.version.cuda)
+        logger.info(
+            "   GPU memory:   %.1f GB",
+            torch.cuda.get_device_properties(0).total_memory / 1e9,
+        )
+        logger.info("   PyTorch:      %s", torch.__version__)
     else:
         device = torch.device("cpu")
-        print("⚠️  CUDA недоступна, обучение на CPU")
-        print(f"   PyTorch: {torch.__version__}")
-        print("   Это будет ОЧЕНЬ медленно для RuBERT. Рассмотри Google Colab.")
+        logger.warning("CUDA недоступна, обучение на CPU")
+        logger.info("   PyTorch: %s", torch.__version__)
+        logger.warning("   Это будет ОЧЕНЬ медленно для RuBERT. Рассмотри Google Colab.")
     return device
 
 
@@ -123,14 +129,14 @@ def main():
     device = get_device()
 
     # === 1. Токенизатор ===
-    print("\n[1/6] Загрузка токенизатора...")
+    logger.info("[1/6] Загрузка токенизатора...")
     tok = TextTokenizer(
         model_name=CONFIG["model_name"],
         max_length=CONFIG["max_length"],
     )
 
     # === 2. Датасеты с кэшем ===
-    print("[2/6] Подготовка датасетов...")
+    logger.info("[2/6] Подготовка датасетов...")
     os.makedirs(CONFIG["cache_dir"], exist_ok=True)
 
     # Имя кэша зависит от параметров — чтобы не перемешать конфиги
@@ -149,8 +155,8 @@ def main():
         cache_path=f"{CONFIG['cache_dir']}/val_{tag}.pt",
     )
 
-    print(f"  train: {len(train_ds)} примеров")
-    print(f"  val:   {len(val_ds)} примеров")
+    logger.info("  train: %d примеров", len(train_ds))
+    logger.info("  val:   %d примеров", len(val_ds))
 
     train_loader = DataLoader(
         train_ds,
@@ -168,7 +174,7 @@ def main():
     )
 
     # === 3. Модель ===
-    print("[3/6] Создание модели...")
+    logger.info("[3/6] Создание модели...")
     model = SpamClassifier(
         model_name=CONFIG["model_name"],
         dropout=CONFIG["dropout"],
@@ -176,11 +182,11 @@ def main():
 
     n_params = sum(p.numel() for p in model.parameters())
     n_trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print(f"  Всего параметров:      {n_params:,}")
-    print(f"  Обучаемых параметров:  {n_trainable:,}")
+    logger.info("  Всего параметров:      %s", f"{n_params:,}")
+    logger.info("  Обучаемых параметров:  %s", f"{n_trainable:,}")
 
     # === 4. Оптимизатор с двумя lr + AMP scaler ===
-    print("[4/6] Настройка оптимизатора...")
+    logger.info("[4/6] Настройка оптимизатора...")
     optimizer = torch.optim.AdamW([
         {"params": model.encoder.parameters(), "lr": CONFIG["lr_encoder"]},
         {"params": model.classifier.parameters(), "lr": CONFIG["lr_head"]},
@@ -191,10 +197,10 @@ def main():
     # GradScaler нужен только для CUDA + AMP
     use_amp = CONFIG["use_amp"] and device.type == "cuda"
     scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
-    print(f"  Mixed precision (AMP): {'включён' if use_amp else 'выключен'}")
+    logger.info("  Mixed precision (AMP): %s", "включён" if use_amp else "выключен")
 
     # === 5. Обучение ===
-    print("[5/6] Обучение...")
+    logger.info("[5/6] Обучение...")
     os.makedirs(CONFIG["checkpoint_dir"], exist_ok=True)
     best_path = os.path.join(CONFIG["checkpoint_dir"], "best.pt")
 
@@ -214,37 +220,41 @@ def main():
         epoch_time = time.time() - epoch_start
 
         # Память GPU, если CUDA
-        mem_info = ""
+        gpu_mem = None
         if device.type == "cuda":
-            mem = torch.cuda.max_memory_allocated() / 1e9
-            mem_info = f" | gpu_mem={mem:.2f}GB"
+            gpu_mem = torch.cuda.max_memory_allocated() / 1e9
             torch.cuda.reset_peak_memory_stats()
 
-        print(f"epoch {epoch:2d} | loss={train_loss:.4f} | "
-              f"val_f1={metrics['f1']:.4f} | "
-              f"prec={metrics['precision']:.4f} | "
-              f"rec={metrics['recall']:.4f} | "
-              f"time={epoch_time:.1f}s{mem_info}")
+        logger.info(
+            "epoch=%d loss=%.4f val_f1=%.4f prec=%.4f rec=%.4f time=%.1fs gpu_mem=%s",
+            epoch,
+            train_loss,
+            metrics["f1"],
+            metrics["precision"],
+            metrics["recall"],
+            epoch_time,
+            f"{gpu_mem:.2f}GB" if gpu_mem is not None else "n/a",
+        )
 
         if metrics["f1"] > best_f1:
             best_f1 = metrics["f1"]
             torch.save(model.state_dict(), best_path)
             no_improve = 0
-            print(f"          → saved best (f1={best_f1:.4f})")
+            logger.info("saved best (f1=%.4f)", best_f1)
         else:
             no_improve += 1
-            print(f"          → no improvement ({no_improve}/{CONFIG['patience']})")
+            logger.info("no improvement (%d/%d)", no_improve, CONFIG["patience"])
             if no_improve >= CONFIG["patience"]:
-                print("Early stopping.")
+                logger.info("Early stopping.")
                 break
 
     total_time = time.time() - start_time
-    print(f"\nОбщее время обучения: {total_time/60:.1f} мин")
+    logger.info("Общее время обучения: %.1f мин", total_time / 60)
 
     # === 6. Финальная оценка на test ===
-    print("\n[6/6] Финальная оценка на test...")
+    logger.info("[6/6] Финальная оценка на test...")
     model.load_state_dict(torch.load(best_path, weights_only=True))
-    print(f"Загружен лучший чекпоинт (val_f1={best_f1:.4f})")
+    logger.info("Загружен лучший чекпоинт (val_f1=%.4f)", best_f1)
 
     test_ds = SpamDataset(
         CONFIG["test_csv"],
@@ -262,16 +272,19 @@ def main():
 
     test_metrics = evaluate(model, test_loader, device, CONFIG["threshold"], use_amp)
 
-    print("\n=== Test ===")
-    print(classification_report(
-        test_metrics["targets"],
-        test_metrics["preds"],
-        target_names=["ham", "spam"],
-        digits=4,
-    ))
+    logger.info(
+        "=== Test ===\n%s",
+        classification_report(
+            test_metrics["targets"],
+            test_metrics["preds"],
+            target_names=["ham", "spam"],
+            digits=4,
+        ),
+    )
 
-    print(f"Лучший чекпоинт: {best_path}")
+    logger.info("Лучший чекпоинт: %s", best_path)
 
 
 if __name__ == "__main__":
+    setup_logging()
     main()

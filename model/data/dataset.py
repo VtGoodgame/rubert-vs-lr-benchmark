@@ -5,9 +5,12 @@ import pandas as pd
 import torch
 from torch.utils.data import Dataset
 
+from common.logging_setup import get_logger
 from model.data.labels import encode_labels
 from model.preprocessing.clean import clean_text
 from model.tokenization.tokenizer import TextTokenizer
+
+logger = get_logger(__name__)
 
 
 class SpamDataset(Dataset):
@@ -15,7 +18,7 @@ class SpamDataset(Dataset):
                  precompute: bool = True, cache_path: str | None = None):
         #Если кэш есть — загружаем и выходим
         if cache_path and os.path.exists(cache_path):
-            print(f"загружаю кэш: {cache_path}")
+            logger.info("загружаю кэш: %s", cache_path)
             cached = torch.load(cache_path, weights_only=True)
             self.input_ids = cached["input_ids"]
             self.attention_mask = cached["attention_mask"]
@@ -46,7 +49,7 @@ class SpamDataset(Dataset):
                 "attention_mask": self.attention_mask,
                 "labels": self.labels,
             }, cache_path)
-            print(f"сохранил кэш: {cache_path}")
+            logger.info("сохранил кэш: %s", cache_path)
 
     def __len__(self) -> int:
         return len(self.labels)
