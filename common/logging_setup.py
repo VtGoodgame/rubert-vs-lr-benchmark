@@ -17,6 +17,19 @@ DEFAULT_DATE_FORMAT = "%H:%M:%S"
 DEFAULT_LEVEL = "INFO"
 LEVEL_ENV_VAR = "INBOX_CLEANER_LOG_LEVEL"
 
+# Сторонние библиотеки, которые на уровне INFO засоряют вывод: каждый запрос
+# к Hugging Face печатается отдельной строкой и забивает полезные сообщения.
+NOISY_LOGGERS = (
+    "httpx",
+    "httpcore",
+    "hpack",
+    "urllib3",
+    "filelock",
+    "asyncio",
+    "huggingface_hub",
+    "transformers",
+)
+
 
 def _resolve_level(level: str | int | None) -> int:
     """Определяет уровень: явный аргумент, переменная окружения, затем дефолт."""
@@ -49,12 +62,17 @@ def setup_logging(
     level: str | int | None = None,
     stream: TextIO | None = None,
     fmt: str = DEFAULT_FORMAT,
+    noisy_level: int | None = logging.WARNING,
 ) -> logging.Logger:
     """Настраивает вывод в консоль и возвращает корневой логгер.
 
     Вывод идёт в stderr, а не в stdout: stdout останется чистым, и его можно
     перенаправить в файл, не смешав с логами. Повторный вызов не дублирует
     обработчики.
+
+    Логгеры из NOISY_LOGGERS опускаются до noisy_level, иначе HTTP-запросы к
+    Hugging Face забивают вывод. На уровне DEBUG приглушение не применяется:
+    там нужен полный поток, иначе не разобрать причину сбоя.
     """
     resolved = _resolve_level(level)
     root = logging.getLogger()
@@ -65,6 +83,10 @@ def setup_logging(
     handler.setFormatter(logging.Formatter(fmt, datefmt=DEFAULT_DATE_FORMAT))
     root.addHandler(handler)
     root.setLevel(resolved)
+
+    if noisy_level is not None and resolved > logging.DEBUG:
+        for name in NOISY_LOGGERS:
+            logging.getLogger(name).setLevel(noisy_level)
     return root
 
 
