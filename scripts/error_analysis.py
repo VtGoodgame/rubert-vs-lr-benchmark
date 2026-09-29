@@ -8,13 +8,16 @@ import pandas as pd
 import torch
 from torch.utils.data import DataLoader
 
+from common.logging_setup import get_logger, setup_logging
 from model.data.dataset import SpamDataset
 from model.spam_classifier import SpamClassifier
 from model.tokenization.tokenizer import TextTokenizer
 
-# Текст писем печатается в консоль: на Windows кодировка по умолчанию cp1251
-# и не выводит часть символов, с которыми приходят письма.
-sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+logger = get_logger(__name__)
+
+# Кодировку вывода и повторный вызов setup_logging больше не нужны:
+# и то и другое делает common.logging_setup.
+setup_logging()
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 tok = TextTokenizer(max_length=128)
@@ -26,7 +29,7 @@ test_ds = SpamDataset("model/data/test.csv", tokenizer=tok)
 test_loader = DataLoader(test_ds, batch_size=32, shuffle=False)
 
 # Собираем предсказания
-all_probs, all_preds, all_labels, all_texts = [], [], [], []
+all_probs, all_preds, all_labels = [], [], []
 df = pd.read_csv("model/data/test.csv").fillna("")
 
 with torch.no_grad():
@@ -45,18 +48,19 @@ df["true"] = all_labels
 fp = df[(df["pred"] == 1) & (df["true"] == 0)]
 fn = df[(df["pred"] == 0) & (df["true"] == 1)]
 
-print(f"False Positives: {len(fp)}")
-print(f"False Negatives: {len(fn)}")
+logger.info("False Positives: %d", len(fp))
+logger.info("False Negatives: %d", len(fn))
 
 # Сохраняем для просмотра
 fp.head(30).to_csv("error_analysis_fp.csv", index=False)
 fn.head(30).to_csv("error_analysis_fn.csv", index=False)
+logger.info("первые 30 FP и FN выгружены в error_analysis_fp.csv и error_analysis_fn.csv")
 
 # Смотрим примеры
-print("\n=== Примеры FP (модель сказала spam, а это ham) ===")
+logger.info("=== Примеры FP (модель сказала spam, а это ham) ===")
 for _, row in fp.head(5).iterrows():
-    print(f"[{row['prob']:.3f}] {str(row['text'])[:200]}...")
+    logger.info("[%.3f] %s...", row["prob"], str(row["text"])[:200])
 
-print("\n=== Примеры FN (модель сказала ham, а это spam) ===")
+logger.info("=== Примеры FN (модель сказала ham, а это spam) ===")
 for _, row in fn.head(5).iterrows():
-    print(f"[{row['prob']:.3f}] {str(row['text'])[:200]}...")
+    logger.info("[%.3f] %s...", row["prob"], str(row["text"])[:200])
