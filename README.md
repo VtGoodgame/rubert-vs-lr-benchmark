@@ -42,6 +42,7 @@ inbox-cleaner/
 | `model:`   | код обучения/инференса, артефакты модели, метрики                         |
 | `service:` | API, схемы запросов/ответов, эндпоинты                                    |
 | `interface:` | UI, логика отображения                                                   |
+| `scripts:`  | вспомогательные скрипты: baseline, разбор ошибок, миграции                  |
 | `ci:`      | GitHub Actions, пайплайны, линтеры в CI                                   |
 | `docs:`    | README, `context.md`, комментарии и документация, не меняющие код         |
 | `chore:`   | инфраструктура вне папок: `.gitignore`, `pyproject.toml`, зависимости     |
@@ -60,6 +61,7 @@ data: обновлён train.csv после переразметки 1200 пис
 model: логрегрессия на TF-IDF, f1 0.84 на test
 service: добавлен эндпоинт POST /predict с валидацией размера текста
 interface: страница истории предсказаний
+scripts: TF-IDF baseline и разбор ошибок на test
 ci: ruff и pytest в push-pipeline
 ```
 
