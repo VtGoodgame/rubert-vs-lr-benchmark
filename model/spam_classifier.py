@@ -2,6 +2,7 @@
 import torch.nn as nn
 from transformers import AutoModel
 
+
 class SpamClassifier(nn.Module):
     def __init__(self, model_name="DeepPavlov/rubert-base-cased", dropout=0.3):
         super().__init__()

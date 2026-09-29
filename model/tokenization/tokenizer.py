@@ -1,5 +1,6 @@
 from transformers import AutoTokenizer
 
+
 class TextTokenizer:
     def __init__(self, model_name: str = "DeepPavlov/rubert-base-cased",
                  max_length: int = 128):

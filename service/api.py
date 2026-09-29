@@ -1,11 +1,11 @@
 # inbox-cleaner/api.py
-from fastapi import FastAPI
 import torch
+from fastapi import FastAPI
 
 from model.api import schemas
+from model.preprocessing.clean import clean_text
 from model.spam_classifier import SpamClassifier
 from model.tokenization.tokenizer import TextTokenizer
-from model.preprocessing.clean import clean_text
 
 app = FastAPI(title="Inbox Cleaner API", version="1.0.0")
 

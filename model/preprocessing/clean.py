@@ -1,6 +1,7 @@
 # clean.py
 import re
 
+
 def clean_text(text):
     """Функция для очистки текста от лишних символов и ссылок."""
     text = re.sub(r'https?://\S+|www\.\S+', '[URL]', text) # Заменяем ссылки на токен [URL]

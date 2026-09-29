@@ -1,14 +1,14 @@
 # inbox-cleaner/train.py
 import os
 import time
-import torch
-from torch.utils.data import DataLoader
-from sklearn.metrics import classification_report, f1_score, precision_score, recall_score
 
-from model.tokenization.tokenizer import TextTokenizer
+import torch
+from sklearn.metrics import classification_report, f1_score, precision_score, recall_score
+from torch.utils.data import DataLoader
+
 from model.data.dataset import SpamDataset
 from model.spam_classifier import SpamClassifier
-
+from model.tokenization.tokenizer import TextTokenizer
 
 # === Настройки ===
 CONFIG = {
