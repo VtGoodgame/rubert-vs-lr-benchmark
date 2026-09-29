@@ -1,11 +1,20 @@
 # scripts/error_analysis.py
-import torch
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 import pandas as pd
+import torch
 from torch.utils.data import DataLoader
-from model.tokenization.tokenizer import TextTokenizer
+
 from model.data.dataset import SpamDataset
 from model.spam_classifier import SpamClassifier
-from model.preprocessing.clean import clean_text
+from model.tokenization.tokenizer import TextTokenizer
+
+# Текст писем печатается в консоль: на Windows кодировка по умолчанию cp1251
+# и не выводит часть символов, с которыми приходят письма.
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 tok = TextTokenizer(max_length=128)
