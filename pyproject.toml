@@ -26,6 +26,20 @@ dev = [
     "ruff>=0.9",
 ]
 
+[tool.uv]
+# Явный индекс только для torch: иначе на linux резолвится CUDA-вариант,
+# который тянет cuda-toolkit с дюжиной библиотек и весит несколько гигабайт.
+# CPU-колесо нужно и CI, и локальным тестам. Если понадобится обучение на GPU,
+# torch ставится отдельно: uv pip install torch --index-url
+# https://download.pytorch.org/whl/cu124
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

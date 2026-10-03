@@ -1,5 +1,44 @@
 # Рабочий контекст
 
+## 2026-10-03 — CPU-only torch в uv.lock
+
+**Задача:** прогон CI на ubuntu-latest упирался в многогигабайтную загрузку
+CUDA-зависимостей torch.
+
+**Что было не так:** `uv lock` на linux резолвил `torch 2.14.1` из PyPI,
+который тянет `cuda-toolkit` с 12 экстрами (cublas, cudnn, cufft, curand,
+cusolver, cusparse, nccl, nvjitlink, nvrtc, nvtx) плюс `triton`. Это
+несколько гигабайт на каждый прогон, и риск упереться в место на диске
+раннера. Локально на Windows вставало `2.14.1+cpu`, поэтому проблема была
+не видна: Windows-колесо всегда CPU, CUDA-вариант там не существует.
+
+**Решение (выбрано пользователем):** зафиксировать CPU-колесо в локе.
+Осознанное следствие — GPU-обучение локально перестаёт работать из-под `uv
+sync`; torch для GPU ставится отдельно, инструкция в README.
+
+**Что сделано:**
+
+- `pyproject.toml` — `[tool.uv]` с явным индексом
+  `https://download.pytorch.org/whl/cpu` и `explicit = true`, плюс
+  `[tool.uv.sources]` с `torch = { index = "pytorch-cpu" }`. Индекс
+  `explicit = true` обязателен: иначе torch искался бы ещё и в PyPI, и
+  резолвился бы в CUDA-вариант.
+- `uv.lock` перегенерирован: 20 CUDA-пакетов удалено (`cuda-toolkit`,
+  `cuda-bindings`, `nvidia-*`, `triton` и др.), в локе ноль упоминаний
+  cuda/nvidia/triton. Остались два блока torch, оба с CPU-индекса:
+  `2.14.1` для darwin (на macOS нет суффикса `+cpu`) и `2.14.1+cpu` для
+  win32 и linux.
+- `README.md` — раздел «Torch: CPU по умолчанию» с объяснением причины и
+  командой возврата GPU.
+
+**Проверка:** `uv sync --dev` поставил `torch 2.14.1+cpu`;
+`torch.cuda.is_available()` = `False`; `uv run ruff check .` —
+`All checks passed!`; `uv run pytest -q` — `106 passed, 4 warnings`.
+
+**Ограничение:** `uv sync` в uv 0.10.9 не умеет `--torch-backend` (он есть
+только у `uv pip install`), поэтому принудительно CPU нельзя задать одной
+командой в workflow — отсюда и правка индекса в `pyproject.toml`.
+
 ## 2026-10-03 — Тесты на код обучения, torch в зависимостях
 
 **Задача:** покрыть автотестами независимые функции, в том числе код

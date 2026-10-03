@@ -125,3 +125,18 @@ uv run streamlit run interface/app.py      # интерфейс
 Конфигурация читается из `.env` (в репозиторий не коммитится), пример —
 `.env.example`.
 
+### Torch: CPU по умолчанию
+
+В `uv.lock` зафиксировано CPU-колесо torch. Причина практическая: обычное
+`torch` на Linux тянет `cuda-toolkit` с дюжиной библиотек и весит несколько
+гигабайт — прогон CI становится долгим и может упереться в место на диске.
+
+Если нужно обучение на GPU, torch ставится отдельно, поверх окружения:
+
+```bash
+uv pip install torch --index-url https://download.pytorch.org/whl/cu124
+```
+
+После этого `uv sync` вернёт CPU-вариант, поэтому GPU-обучение запускайте
+той же командой `uv run python -m model.train`, не вызывая `uv sync` заново.
+
