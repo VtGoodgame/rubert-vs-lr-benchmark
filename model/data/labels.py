@@ -13,3 +13,13 @@ def encode_labels(frame: pd.DataFrame, column: str = "target", dtype: str = "int
         bad = frame.loc[mapped.isna(), column].unique()
         raise ValueError(f"Неизвестные метки: {bad}")
     return mapped.values.astype(dtype)
+
+
+def decode_labels(y):
+    import numpy as np
+    y = np.asarray(y)
+    result = []
+    for val in y:
+        result.append('spam' if int(val) == 1 else 'ham')
+    return result
+
