@@ -1,4 +1,5 @@
 # inbox-cleaner/train.py
+import logging
 import os
 import time
 
@@ -12,6 +13,9 @@ from model.spam_classifier import SpamClassifier
 from model.tokenization.tokenizer import TextTokenizer
 
 logger = get_logger(__name__)
+# INFO видят только логгеры пакета model, а `python -m model.train` выполняет
+# файл как __main__, и этот логгер пакетной настройке не подчиняется.
+logger.setLevel(logging.INFO)
 
 # === Настройки ===
 CONFIG = {
@@ -245,7 +249,7 @@ def main():
             no_improve += 1
             logger.info("no improvement (%d/%d)", no_improve, CONFIG["patience"])
             if no_improve >= CONFIG["patience"]:
-                logger.info("Early stopping.")
+                logger.info("Ранняя остановка.")
                 break
 
     total_time = time.time() - start_time
@@ -273,7 +277,7 @@ def main():
     test_metrics = evaluate(model, test_loader, device, CONFIG["threshold"], use_amp)
 
     logger.info(
-        "=== Test ===\n%s",
+        " Test \n%s",
         classification_report(
             test_metrics["targets"],
             test_metrics["preds"],

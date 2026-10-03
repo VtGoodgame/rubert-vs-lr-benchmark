@@ -1,92 +1,90 @@
 """Единая настройка логирования для слоёв model, service и scripts.
 
 Слои берут логгер через get_logger(__name__) и не настраивают вывод сами.
-Иначе формат сообщений разъезжается между слоями, а вывод уходит в stdout,
-где его не видно в логах CI.
+Иначе формат сообщений разъезжается между слоями.
+
+Правила вывода:
+- по умолчанию в терминал попадает только WARNING и выше;
+- INFO видят только логгеры пакетов из INFO_PACKAGES (обучение модели);
+- строка состоит из имени модуля и текста сообщения;
+- файл логов не создаётся;
+- длинные сообщения заменяются заглушкой, текст писем в консоль не попадает.
+
+Сообщения пишутся по-русски, а поток не бросает UnicodeEncodeError на символах
+вне кодировки консоли. Тексты чужих исключений и библиотек остаются английскими —
+их пишет не мы.
 """
 
 from __future__ import annotations
 
 import logging
-import os
 import sys
 from typing import TextIO
 
-DEFAULT_FORMAT = "%(asctime)s | %(levelname)-8s | %(name)-28s | %(message)s"
-DEFAULT_DATE_FORMAT = "%H:%M:%S"
-DEFAULT_LEVEL = "INFO"
-LEVEL_ENV_VAR = "INBOX_CLEANER_LOG_LEVEL"
+DEFAULT_FORMAT = "%(name)s: %(message)s"
+DEFAULT_LEVEL = logging.WARNING
+HANDLER_NAME = "inbox-cleaner"
 
-# Сторонние библиотеки, которые на уровне INFO засоряют вывод: каждый запрос
-# к Hugging Face печатается отдельной строкой и забивает полезные сообщения.
-NOISY_LOGGERS = (
-    "httpx",
-    "httpcore",
-    "hpack",
-    "urllib3",
-    "filelock",
-    "asyncio",
-    "huggingface_hub",
-    "transformers",
-)
+# INFO нужен только там, где идёт обучение: там прогресс и метрики.
+INFO_PACKAGES = ("model",)
+
+# Письмо длиннее этого в лог не попадает — вместо текста печатается заглушка.
+MAX_MESSAGE_CHARS = 1000
 
 
-def _resolve_level(level: str | int | None) -> int:
-    """Определяет уровень: явный аргумент, переменная окружения, затем дефолт."""
-    if level is None:
-        level = os.environ.get(LEVEL_ENV_VAR, DEFAULT_LEVEL)
-    if isinstance(level, int):
-        return level
-    resolved = logging.getLevelNamesMapping().get(str(level).upper())
-    if resolved is None:
-        known = ", ".join(sorted(logging.getLevelNamesMapping()))
-        raise ValueError(f"Неизвестный уровень логирования: {level!r}. Доступны: {known}")
-    return resolved
+class SuppressLongMessages(logging.Filter):
+    """Отсекает текст писем: длинное сообщение заменяется заглушкой."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            message = record.getMessage()
+        except Exception:
+            return True
+        if len(message) <= MAX_MESSAGE_CHARS:
+            return True
+        record.msg = f"длинное сообщение скрыто ({len(message)} символов)"
+        record.args = ()
+        return True
 
 
-def _utf8_stream(stream: TextIO) -> TextIO:
-    """Переводит поток в utf-8 с заменой непечатаемых символов.
+def _safe_stream(stream: TextIO) -> TextIO:
+    """Запрещает падение на символах вне кодировки консоли.
 
-    Консоль Windows по умолчанию в cp1251 и падает на символах из писем.
+    Кодировку потока не меняем: в консоли Windows это cp866 или cp1251, и utf-8
+    превратил бы русский текст в нечитаемую мешанину. Через errors="replace"
+    неизвестный символ заменяется на "?" вместо UnicodeEncodeError.
     """
     reconfigure = getattr(stream, "reconfigure", None)
-    if reconfigure is not None and (stream.encoding or "").lower().replace("-", "") != "utf8":
-        try:
-            reconfigure(encoding="utf-8", errors="replace")
-        except (ValueError, OSError):
-            pass
+    if reconfigure is not None:
+        reconfigure(errors="replace")
     return stream
 
 
 def setup_logging(
-    level: str | int | None = None,
+    level: int = DEFAULT_LEVEL,
     stream: TextIO | None = None,
-    fmt: str = DEFAULT_FORMAT,
-    noisy_level: int | None = logging.WARNING,
 ) -> logging.Logger:
     """Настраивает вывод в консоль и возвращает корневой логгер.
 
-    Вывод идёт в stderr, а не в stdout: stdout останется чистым, и его можно
-    перенаправить в файл, не смешав с логами. Повторный вызов не дублирует
-    обработчики.
-
-    Логгеры из NOISY_LOGGERS опускаются до noisy_level, иначе HTTP-запросы к
-    Hugging Face забивают вывод. На уровне DEBUG приглушение не применяется:
-    там нужен полный поток, иначе не разобрать причину сбоя.
+    Вывод идёт в stderr, чтобы stdout остался чистым. Повторный вызов
+    заменяет наш обработчик, а не добавляет второй.
     """
-    resolved = _resolve_level(level)
     root = logging.getLogger()
+    root.setLevel(level)
+
     for handler in list(root.handlers):
-        root.removeHandler(handler)
+        if handler.get_name() == HANDLER_NAME:
+            root.removeHandler(handler)
+            handler.close()
 
-    handler = logging.StreamHandler(_utf8_stream(stream if stream is not None else sys.stderr))
-    handler.setFormatter(logging.Formatter(fmt, datefmt=DEFAULT_DATE_FORMAT))
+    handler = logging.StreamHandler(_safe_stream(sys.stderr if stream is None else stream))
+    handler.set_name(HANDLER_NAME)
+    handler.setFormatter(logging.Formatter(DEFAULT_FORMAT))
+    handler.addFilter(SuppressLongMessages())
     root.addHandler(handler)
-    root.setLevel(resolved)
 
-    if noisy_level is not None and resolved > logging.DEBUG:
-        for name in NOISY_LOGGERS:
-            logging.getLogger(name).setLevel(noisy_level)
+    for name in INFO_PACKAGES:
+        logging.getLogger(name).setLevel(logging.INFO)
     return root
 
 
