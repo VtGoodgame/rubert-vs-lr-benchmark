@@ -8,11 +8,15 @@ def compute_confusion(preds: list[int], targets: list[int]) -> dict:
 
     preds:   список предсказаний (0/1)
     targets: список истинных меток (0/1)
+
+    strict=True: разная длина списков — ошибка, а не молчаливое усечение.
+    Иначе потерянные примеры тихо испортили бы метрики.
     """
-    tp = sum(1 for p, t in zip(preds, targets) if p == 1 and t == 1)
-    fp = sum(1 for p, t in zip(preds, targets) if p == 1 and t == 0)
-    tn = sum(1 for p, t in zip(preds, targets) if p == 0 and t == 0)
-    fn = sum(1 for p, t in zip(preds, targets) if p == 0 and t == 1)
+    pairs = list(zip(preds, targets, strict=True))
+    tp = sum(1 for p, t in pairs if p == 1 and t == 1)
+    fp = sum(1 for p, t in pairs if p == 1 and t == 0)
+    tn = sum(1 for p, t in pairs if p == 0 and t == 0)
+    fn = sum(1 for p, t in pairs if p == 0 and t == 1)
     return {"tp": tp, "fp": fp, "tn": tn, "fn": fn}
 
 

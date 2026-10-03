@@ -1,7 +1,4 @@
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import pytest
 
 from scripts.tracking.metrics import compute_all, compute_confusion, compute_metrics
 
@@ -51,3 +48,15 @@ def test_compute_all():
     assert res["tn"] == 0
     assert res["fn"] == 1
     assert 0 <= res["f1"] <= 1.0
+
+
+def test_length_mismatch_raises():
+    """Разная длина preds и targets — ошибка, а не молчаливое усечение.
+
+    Без strict=True zip оборвался бы по короткому списку, и потерянные
+    примеры тихо попали бы в метрики.
+    """
+    with pytest.raises(ValueError):
+        compute_confusion([1, 0, 1], [1, 0])
+    with pytest.raises(ValueError):
+        compute_all([1, 0], [1, 0, 1])

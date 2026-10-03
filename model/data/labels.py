@@ -7,8 +7,12 @@ LABEL_MAP = {"ham": 0, "spam": 1}
 
 
 def encode_labels(frame: pd.DataFrame, column: str = "target", dtype: str = "int8"):
-    """Переводит ham/spam в 0/1. Неизвестная метка — ошибка, а не молчаливый NaN."""
-    mapped = frame[column].str.strip().str.lower().map(LABEL_MAP)
+    """Переводит ham/spam в 0/1. Неизвестная метка — ошибка, а не молчаливый NaN.
+
+    astype(str) обязателен: на пустом фрейме pandas выводит тип float64,
+    и .str без него падает с AttributeError вместо внятной ошибки про метки.
+    """
+    mapped = frame[column].astype(str).str.strip().str.lower().map(LABEL_MAP)
     if mapped.isna().any():
         bad = frame.loc[mapped.isna(), column].unique()
         raise ValueError(f"Неизвестные метки: {bad}")
@@ -16,10 +20,12 @@ def encode_labels(frame: pd.DataFrame, column: str = "target", dtype: str = "int
 
 
 def decode_labels(y):
+    """Переводит 0/1 обратно в ham/spam."""
     import numpy as np
+
     y = np.asarray(y)
     result = []
     for val in y:
-        result.append('spam' if int(val) == 1 else 'ham')
+        result.append("spam" if int(val) == 1 else "ham")
     return result
 
