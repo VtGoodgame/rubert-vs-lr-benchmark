@@ -237,3 +237,9 @@ model/checkpoints/*.pt
 # Отчёты разбора ошибок, которые генерирует scripts/error_analysis.py
 error_analysis_*.csv
 
+# Артефакты baseline и графики: пересоздаются запуском скриптов
+baseline_*.csv
+baseline_*.png
+training_curves.png
+test_comparison.png
+

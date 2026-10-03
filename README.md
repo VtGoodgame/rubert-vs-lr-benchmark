@@ -118,8 +118,9 @@ uv sync                       # установка зависимостей
 uv run ruff check .           # линтер
 uv run pytest                 # тесты
 uv run python -m model.train  # обучение модели
-uv run uvicorn service.main:app --reload   # API
-uv run streamlit run interface/app.py      # интерфейс
+uv run python scripts/baseline.py                      # baseline TF-IDF + LR
+uv run python -m service.main                          # запуск API
+uv run uvicorn service.main:app --reload               # то же с автоперезагрузкой
 ```
 
 Конфигурация читается из `.env` (в репозиторий не коммитится), пример —

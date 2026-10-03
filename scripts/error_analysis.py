@@ -56,11 +56,5 @@ fp.head(30).to_csv("error_analysis_fp.csv", index=False)
 fn.head(30).to_csv("error_analysis_fn.csv", index=False)
 logger.info("первые 30 FP и FN выгружены в error_analysis_fp.csv и error_analysis_fn.csv")
 
-# Смотрим примеры
-logger.info("=== Примеры FP (модель сказала spam, а это ham) ===")
-for _, row in fp.head(5).iterrows():
-    logger.info("[%.3f] %s...", row["prob"], str(row["text"])[:200])
-
-logger.info("=== Примеры FN (модель сказала ham, а это spam) ===")
-for _, row in fn.head(5).iterrows():
-    logger.info("[%.3f] %s...", row["prob"], str(row["text"])[:200])
+# Текст писем в лог не пишется: консоль Windows в cp1251, а письма содержат
+# символы вне кодировки. Смотреть примеры нужно в выгруженных CSV.

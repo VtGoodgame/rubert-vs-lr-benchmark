@@ -4,9 +4,16 @@ from transformers import AutoModel
 
 
 class SpamClassifier(nn.Module):
-    def __init__(self, model_name="DeepPavlov/rubert-base-cased", dropout=0.3):
+    """Классификатор писем: энкодер RuBERT плюс один линейный слой на [CLS].
+
+    encoder задаётся явно только в тестах и CI: настоящие веса rubert занимают
+    ~700 МБ и тянутся из сети, а нужен модуль нужной формы. Без этого аргумента
+    энкодер грузится из HuggingFace как обычно.
+    """
+
+    def __init__(self, model_name="DeepPavlov/rubert-base-cased", dropout=0.3, encoder=None):
         super().__init__()
-        self.encoder = AutoModel.from_pretrained(model_name)
+        self.encoder = encoder if encoder is not None else AutoModel.from_pretrained(model_name)
         hidden = self.encoder.config.hidden_size   # 768
 
         self.dropout = nn.Dropout(dropout)

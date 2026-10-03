@@ -37,3 +37,65 @@ jobs:
 
       - name: Run tests
         run: uv run pytest -v --tb=short
+
+  api:
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --all-extras --dev
+
+      # Настоящие веса rubert занимают ~700 МБ и тянутся из сети, поэтому
+      # сервер поднимается на заглушках: см. service/stubs.py.
+      - name: Start uvicorn
+        env:
+          INBOX_CLEANER_FAKE_MODEL: "1"
+        run: |
+          nohup uv run uvicorn service.main:app --host 127.0.0.1 --port 8000 \
+            > /tmp/uvicorn.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:8000/health > /dev/null; then
+              echo "server is up after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "сервер не поднялся за 30 секунд"
+          cat /tmp/uvicorn.log
+          exit 1
+
+      - name: Check /health
+        run: |
+          curl -sf http://127.0.0.1:8000/health | tee /tmp/health.json
+          grep -q '"status":"ok"' /tmp/health.json
+
+      - name: Check /predict
+        run: |
+          curl -sf -X POST http://127.0.0.1:8000/predict \
+            -H 'Content-Type: application/json' \
+            -d '{"text":"выигрыш миллион"}' | tee /tmp/predict.json
+          grep -qE '"label":"(spam|ham)"' /tmp/predict.json
+
+      - name: Check /predict rejects empty text
+        run: |
+          status=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+            http://127.0.0.1:8000/predict \
+            -H 'Content-Type: application/json' \
+            -d '{"text":""}')
+          test "$status" = "422"
+
+      - name: Show server log
+        if: failure()
+        run: cat /tmp/uvicorn.log || true

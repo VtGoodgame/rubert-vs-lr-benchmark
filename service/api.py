@@ -1,51 +1,100 @@
-# inbox-cleaner/api.py
-import torch
-from fastapi import FastAPI
+# service/api.py
+"""HTTP-интерфейс классификатора писем.
 
-from common.logging_setup import get_logger, setup_logging
+Модель загружается в lifespan, а не на уровне импорта: иначе модуль нельзя
+импортировать в тестах, а сервер нельзя поднять без обученного чекпоинта.
+Состояние лежит в app.state, поэтому тесты подставляют заглушки через
+переопределение get_runtime.
+"""
+
+from contextlib import asynccontextmanager
+
+import torch
+from fastapi import FastAPI, Request
+
+from common.logging_setup import get_logger
 from model.api import schemas
 from model.preprocessing.clean import clean_text
 from model.spam_classifier import SpamClassifier
 from model.tokenization.tokenizer import TextTokenizer
+from service.stubs import TinyTokenizer, build_tiny_model, fake_model_enabled
 
 logger = get_logger(__name__)
 
-setup_logging()
+MODEL_NAME = "DeepPavlov/rubert-base-cased"
+CHECKPOINT_PATH = "model/checkpoints/best.pt"
+MAX_LENGTH = 128
 
-app = FastAPI(title="Inbox Cleaner API", version="1.0.0")
 
-#Загрузка модели один раз при старте
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-tok = TextTokenizer(model_name="DeepPavlov/rubert-base-cased", max_length=128)
+class Runtime:
+    """Всё, что нужно эндпоинтам: токенизатор, модель и устройство."""
 
-logger.info("загружаю веса из model/checkpoints/best.pt")
-model = SpamClassifier(model_name="DeepPavlov/rubert-base-cased")
-model.load_state_dict(torch.load("model/checkpoints/best.pt", weights_only=True))
-model.to(device)
-model.eval()
-logger.info("модель загружена на устройство %s", device)
+    def __init__(self, tokenizer, model, device):
+        self.tokenizer = tokenizer
+        self.model = model
+        self.device = device
+
+
+def build_runtime() -> Runtime:
+    """Собирает токенизатор и модель.
+
+    При INBOX_CLEANER_FAKE_MODEL=1 берутся заглушки: это позволяет поднять
+    сервер в CI без весов rubert и без сети.
+    """
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    if fake_model_enabled():
+        logger.warning("режим заглушек: настоящие веса не загружаются")
+        return Runtime(TinyTokenizer(max_length=8), build_tiny_model(), device)
+
+    logger.info("загружаю веса из %s", CHECKPOINT_PATH)
+    tokenizer = TextTokenizer(model_name=MODEL_NAME, max_length=MAX_LENGTH)
+    model = SpamClassifier(model_name=MODEL_NAME)
+    model.load_state_dict(torch.load(CHECKPOINT_PATH, weights_only=True))
+    model.to(device)
+    model.eval()
+    logger.info("модель загружена на устройство %s", device)
+    return Runtime(tokenizer, model, device)
+
+
+def get_runtime(request: Request) -> Runtime:
+    """Достаёт runtime из состояния приложения."""
+    return request.app.state.runtime
+
+
+@asynccontextmanager
+async def lifespan(application: FastAPI):
+    application.state.runtime = build_runtime()
+    yield
+
+
+app = FastAPI(title="Inbox Cleaner API", version="1.0.0", lifespan=lifespan)
+
 
 @app.get("/health", response_model=schemas.HealthResponse)
-def health():
+def health(request: Request):
     """Проверка, что API жив и модель загружена."""
+    runtime = get_runtime(request)
     return schemas.HealthResponse(
         status="ok",
-        device=str(device),
-        model_loaded=model is not None
+        device=str(runtime.device),
+        model_loaded=runtime.model is not None,
     )
 
+
 @app.post("/predict", response_model=schemas.SpamResponse)
-def predict(request: schemas.EmailRequest):
+def predict(request: Request, email: schemas.EmailRequest):
     """Классификация письма: spam или ham."""
-    cleaned = clean_text(request.text)
-    enc = tok(cleaned)
-    input_ids = enc["input_ids"].to(device)
-    attention_mask = enc["attention_mask"].to(device)
+    runtime = get_runtime(request)
+    cleaned = clean_text(email.text)
+    enc = runtime.tokenizer(cleaned)
+    input_ids = enc["input_ids"].to(runtime.device)
+    attention_mask = enc["attention_mask"].to(runtime.device)
 
     with torch.no_grad():
-        logit = model(input_ids, attention_mask)
+        logit = runtime.model(input_ids, attention_mask)
         prob = torch.sigmoid(logit).item()
 
-    label = "spam" if prob > request.threshold else "ham"
-    logger.info("label=%s confidence=%.4f threshold=%.2f", label, prob, request.threshold)
+    label = "spam" if prob > email.threshold else "ham"
+    logger.info("label=%s confidence=%.4f threshold=%.2f", label, prob, email.threshold)
     return schemas.SpamResponse(label=label, confidence=prob)
