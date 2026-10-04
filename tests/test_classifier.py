@@ -12,6 +12,10 @@ from transformers import AutoConfig
 from model import spam_classifier as classifier_module
 from model.spam_classifier import SpamClassifier
 
+# Маркер снимает эти тесты в CI: они проверяют код моделей, а не независимые
+# функции. Локально `pytest` без -m гоняет их на любом устройстве.
+pytestmark = pytest.mark.torch
+
 BATCH = 4
 SEQ_LEN = 6
 HIDDEN = 16

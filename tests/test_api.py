@@ -11,6 +11,11 @@ from fastapi.testclient import TestClient
 from service.api import app, build_runtime
 from service.stubs import fake_model_enabled
 
+# Устройство, на котором пошла бы модель, — не часть контракта /health: ответ
+# должен быть одинаковым на CI без GPU и на машине с картой. Поэтому
+# проверяется форма ответа и то, что устройство названо одним из известных.
+KNOWN_DEVICE_TYPES = {"cpu", "cuda", "mps", "xpu"}
+
 
 @pytest.fixture
 def client(monkeypatch):
@@ -23,11 +28,12 @@ def client(monkeypatch):
 def test_health_reports_ok(client):
     response = client.get("/health")
     assert response.status_code == 200
-    assert response.json() == {
-        "status": "ok",
-        "device": "cpu",
-        "model_loaded": True,
-    }
+    body = response.json()
+    assert set(body) == {"status", "device", "model_loaded"}
+    assert body["status"] == "ok"
+    assert body["model_loaded"] is True
+    # Индекс допустим, если он есть: "cuda:0" — тот же cuda.
+    assert body["device"].split(":")[0] in KNOWN_DEVICE_TYPES
 
 
 def test_predict_returns_label_and_confidence(client):

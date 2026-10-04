@@ -10,6 +10,10 @@ import torch
 
 from model.data.dataset import SpamDataset
 
+# Маркер снимает эти тесты в CI: они проверяют код моделей, а не независимые
+# функции. Локально `pytest` без -m гоняет их на любом устройстве.
+pytestmark = pytest.mark.torch
+
 
 def test_len_matches_row_count(tmp_csv, spam_ham_rows, fake_tokenizer):
     ds = SpamDataset(str(tmp_csv(spam_ham_rows)), tokenizer=fake_tokenizer)

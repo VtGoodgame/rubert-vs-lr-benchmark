@@ -9,6 +9,10 @@ import torch
 
 from model.tokenization import tokenizer as tokenizer_module
 
+# Маркер снимает эти тесты в CI: они проверяют код моделей, а не независимые
+# функции. Локально `pytest` без -m гоняет их на любом устройстве.
+pytestmark = pytest.mark.torch
+
 
 def test_init_stores_max_length(monkeypatch):
     monkeypatch.setattr(tokenizer_module.AutoTokenizer, "from_pretrained", lambda *a, **k: None)
