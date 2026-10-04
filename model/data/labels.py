@@ -3,7 +3,12 @@
 
 import pandas as pd
 
-LABEL_MAP = {"ham": 0, "spam": 1}
+from common.config import LABELS
+
+# Порядок берётся из common.config: нулевой код соответствует первому имени
+# в LABELS. Словарь в одном месте нужен, чтобы «spam» не оказался 0 в одном
+# слое и 1 в другом.
+LABEL_MAP = {name: code for code, name in enumerate(LABELS)}
 
 
 def encode_labels(frame: pd.DataFrame, column: str = "target", dtype: str = "int8"):
@@ -20,12 +25,8 @@ def encode_labels(frame: pd.DataFrame, column: str = "target", dtype: str = "int
 
 
 def decode_labels(y):
-    """Переводит 0/1 обратно в ham/spam."""
+    """Переводит коды обратно в ham/spam — тем же порядком, что задаёт LABEL_MAP."""
     import numpy as np
 
-    y = np.asarray(y)
-    result = []
-    for val in y:
-        result.append("spam" if int(val) == 1 else "ham")
-    return result
+    return [LABELS[int(val)] for val in np.asarray(y)]
 

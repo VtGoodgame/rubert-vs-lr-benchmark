@@ -3,12 +3,15 @@
 import pytest
 from pydantic import ValidationError
 
+from common.config import SPAM_THRESHOLD
 from model.api.schemas import EmailRequest, HealthResponse, SpamResponse
 
 
 def test_email_request_defaults():
+    """Дефолт берётся из конфига, а не зашит в схему: иначе API и метрики
+    бенчмарка считались бы при разных порогах."""
     req = EmailRequest(text="привет")
-    assert req.threshold == 0.5
+    assert req.threshold == SPAM_THRESHOLD
 
 
 def test_email_request_boundary_thresholds():

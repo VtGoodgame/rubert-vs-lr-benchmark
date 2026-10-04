@@ -1,8 +1,14 @@
 """Построение графиков метрик обучения.
 
 Модуль ничего не знает про обучение и не импортирует torch — на вход
-приходят уже посчитанные числа, на выходе PNG-файлы. Поэтому графики
-можно строить и для baseline, и для RuBERT.
+приходят уже посчитанные числа, на входе же они приходят из common.metrics.
+Поэтому графики строятся и для baseline, и для RuBERT.
+
+Живёт в common/, потому что график рисуют и scripts/, и model/: когда он лежал
+в scripts/, model приходилось импортировать scripts, что запрещено правилом
+слоёв. Общий модуль решает и это: обе модели рисуют свои графики одним и тем же
+кодом, поэтому графики не могут разойтись ни в наборе метрик, ни во внешнем
+виде — а раньше у RuBERT вовсе не было accuracy, и графики были разной длины.
 
 Заголовки и подписи осей русские: графики читает человек, а не код.
 """
@@ -13,7 +19,10 @@ import os
 from collections.abc import Sequence
 
 import matplotlib.pyplot as plt
+import numpy as np
 import seaborn as sns
+
+from common.config import METRIC_NAMES
 
 # Метрики почти всегда в [0, 1], loss — нет. Поэтому у метрик своя ось.
 LOSS_COLOR = "tab:blue"
@@ -35,11 +44,12 @@ def _set_style() -> None:
     )
 
 
-def _save(fig, save_path: str | os.PathLike) -> str:
+def _save(fig, save_path: str | os.PathLike[str]) -> str:
     """Сохраняет картинку и закрывает фигуру, иначе течёт память."""
     path = os.fspath(save_path)
     parent = os.path.dirname(path)
-    os.makedirs(parent, exist_ok=True) if parent else None
+    if parent:
+        os.makedirs(parent, exist_ok=True)
     fig.savefig(path, dpi=300, bbox_inches="tight")
     plt.close(fig)
     return path
@@ -52,7 +62,7 @@ def plot_training_curves(
     val_precision: Sequence[float] | None = None,
     val_recall: Sequence[float] | None = None,
     title: str = "Кривые обучения",
-    save_path: str | os.PathLike = "training_curves.png",
+    save_path: str | os.PathLike[str] = "training_curves.png",
 ) -> str:
     """Строит кривые обучения по эпохам.
 
@@ -104,9 +114,9 @@ def plot_training_curves(
 def plot_test_comparison(
     metrics: dict[str, float],
     title: str = "Метрики на test",
-    save_path: str | os.PathLike = "test_comparison.png",
+    save_path: str | os.PathLike[str] = "test_comparison.png",
 ) -> str:
-    """Строит столбчатую диаграмму метрик — например для сравнения моделей.
+    """Столбчатая диаграмма метрик одной модели.
 
     metrics: {"precision": 0.9, "recall": 0.8, "f1": 0.85}
 
@@ -115,18 +125,67 @@ def plot_test_comparison(
     if not metrics:
         raise ValueError("metrics_dict пуст")
 
-    _set_style()
-    names = list(metrics)
-    values = [float(metrics[name]) for name in names]
+    # Сначала известные доли в принятом порядке, потом всё остальное — чтобы
+    # графики разных моделей читались одинаково.
+    names = [name for name in METRIC_NAMES if name in metrics] or list(metrics)
+    single = {"модель": metrics}
+    return plot_model_comparison(
+        single,
+        metrics=names,
+        title=title,
+        save_path=save_path,
+        show_legend=False,
+    )
 
+
+def plot_model_comparison(
+    results: dict[str, dict[str, float]],
+    metrics: Sequence[str] = METRIC_NAMES,
+    title: str = "Сравнение моделей на test",
+    save_path: str | os.PathLike[str] = "comparison.png",
+    show_legend: bool = True,
+) -> str:
+    """Сгруппированная столбчатая диаграмма: по метрике одна группа, в ней — модели.
+
+    results: {"TF-IDF + LR": {"f1": 0.84, ...}, "RuBERT": {"f1": 0.91, ...}}
+
+    Рисуем столбцы вручную, а не через sns.barplot: нужны подписи значений
+    над каждым столбцом, а при hue их позиции зависят от seaborn.
+
+    Путь к сохранённому файлу.
+    """
+    if not results:
+        raise ValueError("results_dict пуст")
+    if not metrics:
+        raise ValueError("список метрик пуст")
+
+    for model, model_metrics in results.items():
+        missing = [name for name in metrics if name not in model_metrics]
+        if missing:
+            raise ValueError(f"у модели {model!r} нет метрик: {', '.join(missing)}")
+
+    _set_style()
     fig, ax = plt.subplots()
-    sns.barplot(x=names, y=values, ax=ax, color=sns.color_palette("deep")[0])
+
+    n_models = len(results)
+    x = np.arange(len(metrics))
+    width = 0.8 / n_models
+
+    for index, (model, model_metrics) in enumerate(results.items()):
+        values = [float(model_metrics[name]) for name in metrics]
+        # Смещение так, чтобы группа столбцов стояла по центру своей метрики.
+        offset = (index - (n_models - 1) / 2) * width
+        bars = ax.bar(x + offset, values, width, label=model)
+        ax.bar_label(bars, fmt="%.3f", padding=3, fontsize=11)
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(metrics)
     ax.set_ylim(0.0, 1.0)
     ax.set_xlabel("")
     ax.set_ylabel("Значение")
     ax.set_title(title)
 
-    for x, value in enumerate(values):
-        ax.text(x, value + 0.02, f"{value:.3f}", ha="center", va="bottom")
+    if show_legend:
+        ax.legend()
 
     return _save(fig, save_path)

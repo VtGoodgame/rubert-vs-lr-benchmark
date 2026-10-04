@@ -1,6 +1,13 @@
 import pytest
 
-from scripts.tracking.metrics import compute_all, compute_confusion, compute_metrics
+from common.metrics import (
+    DEFAULT_THRESHOLD_GRID,
+    compute_all,
+    compute_at_threshold,
+    compute_confusion,
+    compute_metrics,
+    find_best_threshold,
+)
 
 
 def test_compute_confusion_perfect():
@@ -60,3 +67,46 @@ def test_length_mismatch_raises():
         compute_confusion([1, 0, 1], [1, 0])
     with pytest.raises(ValueError):
         compute_all([1, 0], [1, 0, 1])
+def test_compute_at_threshold_uses_probabilities():
+    """Порог решает судьбу вероятности: ниже — spam, выше или равно — ham."""
+    probs = [0.9, 0.4]
+    targets = [1, 0]
+
+    assert compute_at_threshold(probs, targets, 0.5)["tp"] == 1
+    assert compute_at_threshold(probs, targets, 0.2)["fp"] == 1
+
+
+def test_compute_at_threshold_boundary_is_ham():
+    """Равенство prob == threshold даёт ham: сетка порогов на этом и строит
+    перебор, иначе верхний порог вёл бы себя как «всё spam»."""
+    metrics = compute_at_threshold([0.5], [1], 0.5)
+    assert metrics["tp"] == 0
+    assert metrics["fn"] == 1
+
+
+def test_find_best_threshold_picks_argmax():
+    probs = [0.95, 0.92, 0.15, 0.10]
+    targets = [1, 1, 0, 0]
+    threshold, metrics = find_best_threshold(probs, targets)
+    assert metrics["f1"] == 1.0
+    assert threshold in DEFAULT_THRESHOLD_GRID
+
+
+def test_find_best_threshold_is_reproducible_on_tie():
+    """При равном f1 побеждает меньший порог, иначе результат зависел бы от
+    порядка обхода сетки."""
+    probs = [0.4, 0.45]
+    targets = [1, 0]
+    first, _ = find_best_threshold(probs, targets)
+    second, _ = find_best_threshold(probs, targets)
+    assert first == second
+
+
+def test_find_best_threshold_rejects_empty_probs():
+    with pytest.raises(ValueError, match="пуст"):
+        find_best_threshold([], [])
+
+
+def test_find_best_threshold_rejects_empty_grid():
+    with pytest.raises(ValueError, match="пуста"):
+        find_best_threshold([0.5], [1], grid=())

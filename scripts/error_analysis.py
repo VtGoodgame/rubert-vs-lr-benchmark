@@ -8,6 +8,7 @@ import pandas as pd
 import torch
 from torch.utils.data import DataLoader
 
+from common.config import CHECKPOINT_PATH, MAX_LENGTH, MODEL_NAME, SPAM_THRESHOLD, TEST_CSV
 from common.logging_setup import get_logger, setup_logging
 from model.data.dataset import SpamDataset
 from model.spam_classifier import SpamClassifier
@@ -20,24 +21,26 @@ logger = get_logger(__name__)
 setup_logging()
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-tok = TextTokenizer(max_length=128)
-model = SpamClassifier().to(device)
-model.load_state_dict(torch.load("model/checkpoints/best.pt", weights_only=True))
+tok = TextTokenizer(model_name=MODEL_NAME, max_length=MAX_LENGTH)
+model = SpamClassifier(model_name=MODEL_NAME).to(device)
+model.load_state_dict(torch.load(CHECKPOINT_PATH, weights_only=True))
 model.eval()
 
-test_ds = SpamDataset("model/data/test.csv", tokenizer=tok)
+test_ds = SpamDataset(TEST_CSV, tokenizer=tok)
 test_loader = DataLoader(test_ds, batch_size=32, shuffle=False)
 
 # Собираем предсказания
 all_probs, all_preds, all_labels = [], [], []
-df = pd.read_csv("model/data/test.csv").fillna("")
+df = pd.read_csv(TEST_CSV).fillna("")
 
 with torch.no_grad():
     for batch in test_loader:
         logits = model(batch["input_ids"].to(device), batch["attention_mask"].to(device))
         probs = torch.sigmoid(logits).cpu().numpy()
         all_probs.extend(probs)
-        all_preds.extend((probs > 0.5).astype(int))
+        # Порог из конфига, а не 0.5: иначе примеры FP/FN не соответствовали
+        # бы метрикам, посчитанным в бенчмарке.
+        all_preds.extend((probs > SPAM_THRESHOLD).astype(int))
         all_labels.extend(batch["labels"].numpy())
 
 # FP и FN
