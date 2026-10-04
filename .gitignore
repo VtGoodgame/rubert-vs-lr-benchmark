@@ -242,4 +242,12 @@ baseline_*.csv
 baseline_*.png
 training_curves.png
 test_comparison.png
+rubert_metrics.csv
+rubert_metrics.png
+comparison_metrics.csv
+
+# comparison.png здесь нет намеренно: на него ссылается README, и без него
+# сравнение моделей не видно в репозитории. Перезаписывается каждый прогон
+# scripts/compare.py, но коммитится, поэтому в историю попадает снимок
+# результата, на который ссылается документация.
 
