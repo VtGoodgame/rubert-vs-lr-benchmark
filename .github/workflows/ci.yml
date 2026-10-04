@@ -22,8 +22,11 @@ jobs:
       - name: Set up Python 3.12
         run: uv python install 3.12
 
+      # Экстра cpu, а не просто --dev: torch лежит в optional-зависимостях
+      # двумя версиями, и cpu-экстра тянет ~200 МБ без CUDA. GPU-экстру в CI
+      # ставить незачем — на раннере нет карты, а wheel весит 2.4 ГиБ.
       - name: Install dependencies
-        run: uv sync --all-extras --dev
+        run: uv sync --extra cpu --dev
 
       - name: Cache matplotlib font list
         uses: actions/cache@v4
@@ -35,8 +38,14 @@ jobs:
       - name: Run linter (ruff)
         run: uv run ruff check .
 
+      # -m "not torch" убирает тесты кода моделей (SpamClassifier, SpamDataset,
+      # TextTokenizer, evaluate/save_artifacts): это гонки на реальном железе,
+      # а CI их всё равно не проверяет — настоящие веса rubert тут недоступны.
+      # Всё остальное — сервис и независимые функции — проверяется целиком, и
+      # ни один тест не зависит от того, есть на раннере GPU.
+      # Локально те же тесты гоняются обычным `uv run pytest` без -m.
       - name: Run tests
-        run: uv run pytest -v --tb=short
+        run: uv run pytest -v --tb=short -m "not torch"
 
   api:
     runs-on: ubuntu-latest
@@ -55,7 +64,7 @@ jobs:
         run: uv python install 3.12
 
       - name: Install dependencies
-        run: uv sync --all-extras --dev
+        run: uv sync --extra cpu --dev
 
       # Настоящие веса rubert занимают ~700 МБ и тянутся из сети, поэтому
       # сервер поднимается на заглушках: см. service/stubs.py.
@@ -63,7 +72,7 @@ jobs:
         env:
           INBOX_CLEANER_FAKE_MODEL: "1"
         run: |
-          nohup uv run uvicorn service.main:app --host 127.0.0.1 --port 8000 \
+          nohup uv run uvicorn main:app --host 127.0.0.1 --port 8000 \
             > /tmp/uvicorn.log 2>&1 &
           for i in $(seq 1 30); do
             if curl -sf http://127.0.0.1:8000/health > /dev/null; then
