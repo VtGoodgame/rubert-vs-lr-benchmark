@@ -6,19 +6,29 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",
-    "joblib>=1.4",
     "matplotlib>=3.10",
     "pandas>=2.2",
     "pydantic>=2.10",
-    "pydantic-settings>=2.7",
-    "python-dotenv>=1.0",
     "scikit-learn>=1.6",
     "seaborn>=0.13",
-    "streamlit>=1.44",
-    "torch>=2.5",
     "transformers>=4.46",
     "uvicorn[standard]>=0.34",
 ]
+
+# torch не в базовых зависимостях: колесо для CUDA весит несколько гигабайт
+# и CI оно не нужно. Версия выбирается экстрой, а не флагом --index-url,
+# потому что источник на пакет в uv перебивается, а не дополняется: следующий
+# же uv sync молча возвращал бы CPU-колесо — именно на этом проект уже потерял
+# 3.5 часа обучения.
+#
+#   uv sync --extra cpu --dev   # CI и локальные тесты: ~200 МБ, без CUDA
+#   uv sync --extra gpu --dev   # обучение RuBERT на NVIDIA
+#
+# Сервис тоже требует torch (service/stubs.py, model/spam_classifier.py),
+# поэтому экстра нужна и для запуска сервера, а не только для обучения.
+[project.optional-dependencies]
+cpu = ["torch>=2.5"]
+gpu = ["torch>=2.5"]
 
 [dependency-groups]
 dev = [
@@ -26,26 +36,40 @@ dev = [
     "ruff>=0.9",
 ]
 
-[tool.uv]
-# Явный индекс только для torch: иначе на linux резолвится CUDA-вариант,
-# который тянет cuda-toolkit с дюжиной библиотек и весит несколько гигабайт.
-# CPU-колесо нужно и CI, и локальным тестам. Если понадобится обучение на GPU,
-# torch ставится отдельно: uv pip install torch --index-url
-# https://download.pytorch.org/whl/cu124
 [[tool.uv.index]]
 name = "pytorch-cpu"
 url = "https://download.pytorch.org/whl/cpu"
-explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+
+[tool.uv]
+# Экстры cpu и gpu несовместимы: каждая тянет torch со своего индекса, и
+# одновременно поставить их нельзя. Без этого объявления uv не может доказать,
+# что требования непересекающиеся, и падает на резолве.
+conflicts = [
+    [{ extra = "cpu" }, { extra = "gpu" }],
+]
 
 [tool.uv.sources]
-torch = { index = "pytorch-cpu" }
+# Один источник на пакет в uv перебивается, а не дополняется: без массива
+# второй индекс молча проигрывал бы первому. Массив с extra — единственный
+# способ получить в одном локе и CPU-колесо для CI, и CUDA-колесо для GPU.
+torch = [
+    { index = "pytorch-cpu", extra = "cpu" },
+    { index = "pytorch-cu126", extra = "gpu" },
+]
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["common", "model", "service", "interface"]
+# main.py — модуль верхнего уровня (точка входа), поэтому в packages не входит:
+# он перечисляется рядом с пакетами. Раньше здесь был несуществующий interface,
+# из-за чего сборка колеса падала.
+only-include = ["common", "model", "service", "main.py"]
 
 [tool.ruff]
 line-length = 100
@@ -56,3 +80,6 @@ select = ["E", "F", "I", "UP", "B"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "torch: тесты кода моделей на torch; в CI исключаются через -m \"not torch\"",
+]
