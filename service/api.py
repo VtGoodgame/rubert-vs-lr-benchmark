@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 import torch
 from fastapi import FastAPI, Request
 
+from common.config import CHECKPOINT_PATH, MAX_LENGTH, MODEL_NAME
 from common.logging_setup import get_logger
 from model.api import schemas
 from model.preprocessing.clean import clean_text
@@ -20,10 +21,6 @@ from model.tokenization.tokenizer import TextTokenizer
 from service.stubs import TinyTokenizer, build_tiny_model, fake_model_enabled
 
 logger = get_logger(__name__)
-
-MODEL_NAME = "DeepPavlov/rubert-base-cased"
-CHECKPOINT_PATH = "model/checkpoints/best.pt"
-MAX_LENGTH = 128
 
 
 class Runtime:
@@ -45,7 +42,12 @@ def build_runtime() -> Runtime:
 
     if fake_model_enabled():
         logger.warning("режим заглушек: настоящие веса не загружаются")
-        return Runtime(TinyTokenizer(max_length=8), build_tiny_model(), device)
+        # Заглушку тоже нужно перенести на устройство. Раньше здесь стоял
+        # голый build_tiny_model(), и на машине с GPU /predict падал:
+        # токенизатор отдавал тензоры на CPU, predict() переносил их на cuda,
+        # а веса микроэнкодера оставались на CPU. На CI этого не видно, потому
+        # что там устройство всегда одно.
+        return Runtime(TinyTokenizer(max_length=8), build_tiny_model().to(device), device)
 
     logger.info("загружаю веса из %s", CHECKPOINT_PATH)
     tokenizer = TextTokenizer(model_name=MODEL_NAME, max_length=MAX_LENGTH)

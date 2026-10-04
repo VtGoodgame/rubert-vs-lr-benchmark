@@ -1,4 +1,4 @@
-"""Тесты точки входа: service/main.py должна поднимать uvicorn с приложением.
+"""Тесты точки входа: main.py в корне должна поднимать uvicorn с приложением.
 
 Сам сервер здесь не запускается: uvicorn.run подменяется заглушкой, которая
 записывает аргументы. Реальный подъём проверяется отдельным этапом CI.
@@ -6,7 +6,7 @@
 
 import pytest
 
-from service import main as main_module
+import main as main_module
 
 
 @pytest.fixture
@@ -54,7 +54,7 @@ def test_main_sets_up_logging(recorded_run, monkeypatch):
 
 
 def test_app_is_importable_without_loading_weights():
-    """Импорт service.main не должен поднимать lifespan и грузить модель."""
+    """Импорт main не должен поднимать lifespan и грузить модель."""
     assert main_module.app.title == "Inbox Cleaner API"
     assert main_module.app.version == "1.0.0"
 
