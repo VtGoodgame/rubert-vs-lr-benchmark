@@ -216,3 +216,38 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Артефакты обучения и метрики
+artifacts/
+mlruns/
+*.joblib
+
+# Данные, которые воспроизводятся из источника
+data/*.tmp
+
+# Токенизированные датасеты: восстанавливаются из CSV повторным запуском обучения
+model/data/cache/
+
+# Данные, использованные для обучения и тестирования: воспроизводятся только из источника
+model/data/**/*.csv
+
+# Веса обученной модели: артефакт сборки, ~680 МБ
+model/checkpoints/*.pt
+
+# Отчёты разбора ошибок, которые генерирует scripts/error_analysis.py
+error_analysis_*.csv
+
+# Артефакты baseline и графики: пересоздаются запуском скриптов
+baseline_*.csv
+baseline_*.png
+training_curves.png
+test_comparison.png
+rubert_metrics.csv
+rubert_metrics.png
+comparison_metrics.csv
+
+# comparison.png здесь нет намеренно: на него ссылается README, и без него
+# сравнение моделей не видно в репозитории. Перезаписывается каждый прогон
+# scripts/compare.py, но коммитится, поэтому в историю попадает снимок
+# результата, на который ссылается документация.
+
